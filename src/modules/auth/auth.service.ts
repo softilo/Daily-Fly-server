@@ -220,45 +220,43 @@ export class AuthService {
     return staff;
   }
 
+  private getCookieBaseOptions(path: string) {
+    const isProd = process.env.NODE_ENV === 'production';
+    const sameSite: 'lax' | 'none' =
+      process.env.COOKIE_SAME_SITE === 'lax'
+        ? 'lax'
+        : process.env.COOKIE_SAME_SITE === 'none'
+          ? 'none'
+          : isProd
+            ? 'none'
+            : 'lax';
+
+    return {
+      httpOnly: true,
+      secure: isProd || sameSite === 'none',
+      sameSite,
+      path,
+    };
+  }
+
   private setAuthCookies(
     res: Response,
     accessToken: string,
     refreshToken: string,
   ) {
-    const isProd = process.env.NODE_ENV === 'production';
-
     res.cookie('access_token', accessToken, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: 'lax',
+      ...this.getCookieBaseOptions('/'),
       maxAge: 15 * 60 * 1000, // 15 mins
-      path: '/',
     });
 
     res.cookie('refresh_token', refreshToken, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: 'lax',
+      ...this.getCookieBaseOptions('/api/v1/auth'),
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: '/api/v1/auth',
     });
   }
 
   private clearAuthCookies(res: Response) {
-    const isProd = process.env.NODE_ENV === 'production';
-
-    res.clearCookie('access_token', {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: 'lax',
-      path: '/',
-    });
-
-    res.clearCookie('refresh_token', {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: 'lax',
-      path: '/api/v1/auth',
-    });
+    res.clearCookie('access_token', this.getCookieBaseOptions('/'));
+    res.clearCookie('refresh_token', this.getCookieBaseOptions('/api/v1/auth'));
   }
 }

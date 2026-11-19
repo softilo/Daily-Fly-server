@@ -8,6 +8,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "vercel-build": "prisma generate --config prisma7.config.ts && tsc -p tsconfig.build.json",
     "deploy": "nest deploy",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
