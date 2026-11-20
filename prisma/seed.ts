@@ -24,6 +24,103 @@ import {
 const STANDARD_DISCLAIMER =
   'Visa issuance, processing timelines, and work/study permit decisions are determined solely by the respective embassy, high commission, or immigration authority. Our agency provides consultancy, documentation review, and application assistance only and never guarantees visa approval.';
 
+interface SeedStaffSpec {
+  email: string;
+  name: string;
+  password: string;
+  role: StaffRole;
+}
+
+function readRequiredEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(
+      `Missing required seed environment variable: ${name}. Set it in .env before running the seed script.`,
+    );
+  }
+  return value;
+}
+
+function validateSeedPassword(name: string, password: string): string {
+  if (password.length < 6) {
+    throw new Error(
+      `Seed environment variable ${name} must be at least 6 characters long.`,
+    );
+  }
+  return password;
+}
+
+function getSeedStaffSpecs(): {
+  adminSpec: SeedStaffSpec;
+  agentSpec: SeedStaffSpec | null;
+} {
+  const adminEmail = readRequiredEnv('SEED_ADMIN_EMAIL').toLowerCase();
+  const adminPassword = validateSeedPassword(
+    'SEED_ADMIN_PASSWORD',
+    readRequiredEnv('SEED_ADMIN_PASSWORD'),
+  );
+  const adminName = process.env['SEED_ADMIN_NAME']?.trim() || 'Agency Admin';
+
+  const rawAgentEmail = process.env['SEED_AGENT_EMAIL']?.trim();
+  const rawAgentPassword = process.env['SEED_AGENT_PASSWORD']?.trim();
+  let agentSpec: SeedStaffSpec | null = null;
+
+  if (rawAgentEmail || rawAgentPassword) {
+    const agentEmail = readRequiredEnv('SEED_AGENT_EMAIL').toLowerCase();
+    if (agentEmail === adminEmail) {
+      throw new Error(
+        'SEED_AGENT_EMAIL must be different from SEED_ADMIN_EMAIL.',
+      );
+    }
+    const agentPassword = validateSeedPassword(
+      'SEED_AGENT_PASSWORD',
+      readRequiredEnv('SEED_AGENT_PASSWORD'),
+    );
+    const agentName = process.env['SEED_AGENT_NAME']?.trim() || 'Sales Agent';
+    agentSpec = {
+      email: agentEmail,
+      name: agentName,
+      password: agentPassword,
+      role: StaffRole.SALES_AGENT,
+    };
+  }
+
+  return {
+    adminSpec: {
+      email: adminEmail,
+      name: adminName,
+      password: adminPassword,
+      role: StaffRole.OWNER_ADMIN,
+    },
+    agentSpec,
+  };
+}
+
+async function ensureSeedStaffUser(
+  prisma: PrismaClient,
+  spec: SeedStaffSpec,
+) {
+  const existing = await prisma.staffUser.findUnique({
+    where: { email: spec.email },
+  });
+  if (existing) {
+    return existing;
+  }
+
+  const passwordHash = await bcrypt.hash(spec.password, 10);
+  const created = await prisma.staffUser.create({
+    data: {
+      email: spec.email,
+      name: spec.name,
+      passwordHash,
+      role: spec.role,
+      status: StaffStatus.ACTIVE,
+    },
+  });
+  console.log(`Created ${spec.role}: ${spec.email}`);
+  return created;
+}
+
 async function resetDatabase(prisma: PrismaClient) {
   console.log('Resetting all development tables in dependency order...');
   await prisma.visaInquiry.deleteMany();
@@ -44,6 +141,7 @@ async function resetDatabase(prisma: PrismaClient) {
 }
 
 async function seed() {
+  const { adminSpec, agentSpec } = getSeedStaffSpecs();
   const shouldReset = process.argv.includes('--reset');
   const connectionString =
     process.env.DATABASE_URL ||
@@ -82,42 +180,12 @@ async function seed() {
       console.log('Created agency settings.');
     }
 
-    // 2. Staff Users (OWNER_ADMIN + SALES_AGENT)
-    const defaultAdminEmail = 'admin@travelpilot.internal';
-    let adminUser = await prisma.staffUser.findUnique({
-      where: { email: defaultAdminEmail },
-    });
-    if (!adminUser) {
-      const passwordHash = await bcrypt.hash('Admin@TravelPilot2026!', 10);
-      adminUser = await prisma.staffUser.create({
-        data: {
-          email: defaultAdminEmail,
-          name: 'Agency Admin',
-          passwordHash,
-          role: StaffRole.OWNER_ADMIN,
-          status: StaffStatus.ACTIVE,
-        },
-      });
-      console.log(`Created OWNER_ADMIN: ${defaultAdminEmail}`);
-    }
-
-    const defaultAgentEmail = 'agent@travelpilot.internal';
-    let agentUser = await prisma.staffUser.findUnique({
-      where: { email: defaultAgentEmail },
-    });
-    if (!agentUser) {
-      const agentHash = await bcrypt.hash('Agent@TravelPilot2026!', 10);
-      agentUser = await prisma.staffUser.create({
-        data: {
-          email: defaultAgentEmail,
-          name: 'Tariqul Hasan',
-          passwordHash: agentHash,
-          role: StaffRole.SALES_AGENT,
-          status: StaffStatus.ACTIVE,
-        },
-      });
-      console.log(`Created SALES_AGENT: ${defaultAgentEmail}`);
-    }
+    // 2. Staff Users (configured from environment variables)
+    const adminUser = await ensureSeedStaffUser(prisma, adminSpec);
+    const agentUser = agentSpec
+      ? await ensureSeedStaffUser(prisma, agentSpec)
+      : null;
+    const defaultAssignee = agentUser ?? adminUser;
 
     // 3. Verified Packages (Tour, Hajj & Umrah, Work Permit, Student Visa)
     const pkgCount = await prisma.package.count();
@@ -886,7 +954,7 @@ async function seed() {
           budget: 680000,
           stage: LeadStage.QUALIFIED,
           eligibilityStatus: 'HIGH_MATCH',
-          assignedToId: agentUser.id,
+          assignedToId: defaultAssignee.id,
           requirements: '28 years old, 2 years warehouse experience, passport valid until 2030.',
           documentChecklist: buildDefaultDocumentChecklist('WORK_PERMIT') as any,
           milestoneChecklist: buildDefaultMilestoneChecklist('WORK_PERMIT') as any,
@@ -902,7 +970,7 @@ async function seed() {
       await prisma.leadNote.create({
         data: {
           leadId: lead1.id,
-          authorId: agentUser.id,
+          authorId: defaultAssignee.id,
           content: 'Verified passport expiry (2030) and 2 years logistics experience. Ready for PCC & medical briefing.',
         },
       });
@@ -910,7 +978,7 @@ async function seed() {
       await prisma.followUpTask.create({
         data: {
           leadId: lead1.id,
-          assignedToId: agentUser.id,
+          assignedToId: defaultAssignee.id,
           title: 'Collect Police Clearance & schedule embassy briefing',
           dueAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
           status: FollowUpStatus.OPEN,
@@ -946,7 +1014,7 @@ async function seed() {
           budget: 2500000,
           stage: LeadStage.NEW,
           eligibilityStatus: 'HIGH_MATCH',
-          assignedToId: agentUser.id,
+          assignedToId: defaultAssignee.id,
           requirements: 'BBA CGPA 3.45, IELTS 6.5 overall, targeting MSc Management for September intake.',
           documentChecklist: buildDefaultDocumentChecklist('STUDENT_VISA') as any,
           milestoneChecklist: buildDefaultMilestoneChecklist('STUDENT_VISA') as any,
@@ -1001,7 +1069,7 @@ async function seed() {
           travelerCount: 2,
           budget: 120000,
           stage: LeadStage.FOLLOW_UP,
-          assignedToId: agentUser.id,
+          assignedToId: defaultAssignee.id,
           requirements: '5D/4N Dubai couple trip with Desert Safari and UAE Tourist Visa.',
         },
       });
