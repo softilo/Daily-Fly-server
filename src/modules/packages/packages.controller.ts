@@ -11,6 +11,7 @@ import {
   Post,
   Query,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PackagesService } from './packages.service.js';
@@ -22,6 +23,7 @@ import { RolesGuard } from '../../common/guards/roles.guard.js';
 import { Roles } from '../../common/decorators/roles.decorator.js';
 import { Public } from '../../common/decorators/public.decorator.js';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
+import { PublicCacheInterceptor } from '../../common/interceptors/public-cache.interceptor.js';
 import { StaffRole } from '../../generated/prisma/client.js';
 
 @ApiTags('Packages')
@@ -33,6 +35,7 @@ export class PackagesController {
 
   @Public()
   @Get()
+  @UseInterceptors(PublicCacheInterceptor)
   @ApiOperation({ summary: 'List tour packages with search and filtering' })
   @ApiResponse({ status: 200, description: 'Paginated tour package catalog' })
   async findAll(@Query() query: PackageQueryDto) {
@@ -41,6 +44,7 @@ export class PackagesController {
 
   @Public()
   @Get(':id')
+  @UseInterceptors(PublicCacheInterceptor)
   @ApiOperation({ summary: 'Get tour package details by ID' })
   @ApiResponse({ status: 200, description: 'Tour package details' })
   @ApiResponse({ status: 404, description: 'Package not found' })

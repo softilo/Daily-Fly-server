@@ -302,7 +302,18 @@ export class CountriesService {
   }
 
   async softArchive(id: string, actorId: string) {
-    const current = await this.findAdminOne(id);
+    const current = await this.prisma.country.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        isoCode: true,
+      },
+    });
+
+    if (!current) {
+      throw new NotFoundException(`Country with ID ${id} not found`);
+    }
 
     const updated = await this.prisma.country.update({
       where: { id },

@@ -15,13 +15,23 @@ export class PrismaService
     const connectionString =
       process.env.DATABASE_URL ||
       'postgresql://postgres:postgres@localhost:5432/travelpilot?schema=public';
-    const pool = new pg.Pool({ connectionString });
+    const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+    const pool = new pg.Pool({
+      connectionString,
+      max: isServerless ? 3 : 10,
+      idleTimeoutMillis: isServerless ? 10000 : 30000,
+      connectionTimeoutMillis: 10000,
+    });
     const adapter = new PrismaPg(pool);
     super({ adapter });
     this.pool = pool;
   }
 
   async onModuleInit() {
+    if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+      return;
+    }
+
     try {
       await this.$connect();
       this.logger.log('PrismaService connected to PostgreSQL database');

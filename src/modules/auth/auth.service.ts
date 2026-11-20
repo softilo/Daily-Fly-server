@@ -58,18 +58,19 @@ export class AuthService {
       process.env.JWT_REFRESH_SECRET ||
       'travelpilot-refresh-secret-min-32-chars-long';
 
-    const accessToken = await this.tokenService.signAsync(payload, {
-      secret: accessSecret,
-      expiresIn: (process.env.JWT_ACCESS_EXPIRES_IN || '15m') as any,
-    });
-
-    const refreshToken = await this.tokenService.signAsync(
-      { sub: staff.id },
-      {
-        secret: refreshSecret,
-        expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN || '7d') as any,
-      },
-    );
+    const [accessToken, refreshToken] = await Promise.all([
+      this.tokenService.signAsync(payload, {
+        secret: accessSecret,
+        expiresIn: (process.env.JWT_ACCESS_EXPIRES_IN || '15m') as any,
+      }),
+      this.tokenService.signAsync(
+        { sub: staff.id },
+        {
+          secret: refreshSecret,
+          expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN || '7d') as any,
+        },
+      ),
+    ]);
 
     const refreshTokenHash = crypto
       .createHash('sha256')
@@ -149,18 +150,19 @@ export class AuthService {
       process.env.JWT_ACCESS_SECRET ||
       'travelpilot-access-secret-min-32-chars-long';
 
-    const newAccessToken = await this.tokenService.signAsync(newPayload, {
-      secret: accessSecret,
-      expiresIn: (process.env.JWT_ACCESS_EXPIRES_IN || '15m') as any,
-    });
-
-    const newRefreshToken = await this.tokenService.signAsync(
-      { sub: staff.id },
-      {
-        secret: refreshSecret,
-        expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN || '7d') as any,
-      },
-    );
+    const [newAccessToken, newRefreshToken] = await Promise.all([
+      this.tokenService.signAsync(newPayload, {
+        secret: accessSecret,
+        expiresIn: (process.env.JWT_ACCESS_EXPIRES_IN || '15m') as any,
+      }),
+      this.tokenService.signAsync(
+        { sub: staff.id },
+        {
+          secret: refreshSecret,
+          expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN || '7d') as any,
+        },
+      ),
+    ]);
 
     const newHash = crypto
       .createHash('sha256')

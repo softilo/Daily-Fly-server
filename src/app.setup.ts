@@ -62,41 +62,43 @@ export function configureApp(app: INestApplication): void {
     new LoggingInterceptor(),
   );
 
-  // OpenAPI / Swagger Documentation
-  const config = new DocumentBuilder()
-    .setTitle('TravelPilot Backend API')
-    .setDescription(
-      'Private AI Travel Sales & Operations Management System API for authorized staff',
-    )
-    .setVersion('1.0')
-    .addTag('Auth', 'Staff authentication and session management')
-    .addTag('Staff', 'Staff user management (Admin only)')
-    .addTag('Agency Settings', 'Agency branding and configuration defaults')
-    .addTag('Packages', 'Tour package catalog management')
-    .addTag('Leads', 'Customer CRM leads and notes')
-    .addTag('Follow-Ups', 'Manual follow-up task management')
-    .addTag(
-      'Quotations',
-      'Server-authoritative quotation engine and branded PDF export',
-    )
-    .addTag('AI', 'Grounded AI advisory assistant for draft responses')
-    .addTag('Dashboard', 'Operational metrics and lead funnel analytics')
-    .addTag('Audit', 'Audit trail for sensitive actions')
-    .addTag('Countries', 'Destination country management for Visa & Immigration')
-    .addTag(
-      'Visa Services',
-      'Visa & Immigration service offerings and requirements',
-    )
-    .addTag(
-      'Visa Inquiries',
-      'Public visa consultation inquiries linked to Lead CRM',
-    )
-    .addCookieAuth('access_token')
-    .addBearerAuth()
-    .build();
+  // OpenAPI / Swagger Documentation (disable in production via ENABLE_SWAGGER=false to reduce cold-start overhead)
+  if (process.env.ENABLE_SWAGGER !== 'false') {
+    const config = new DocumentBuilder()
+      .setTitle('TravelPilot Backend API')
+      .setDescription(
+        'Private AI Travel Sales & Operations Management System API for authorized staff',
+      )
+      .setVersion('1.0')
+      .addTag('Auth', 'Staff authentication and session management')
+      .addTag('Staff', 'Staff user management (Admin only)')
+      .addTag('Agency Settings', 'Agency branding and configuration defaults')
+      .addTag('Packages', 'Tour package catalog management')
+      .addTag('Leads', 'Customer CRM leads and notes')
+      .addTag('Follow-Ups', 'Manual follow-up task management')
+      .addTag(
+        'Quotations',
+        'Server-authoritative quotation engine and branded PDF export',
+      )
+      .addTag('AI', 'Grounded AI advisory assistant for draft responses')
+      .addTag('Dashboard', 'Operational metrics and lead funnel analytics')
+      .addTag('Audit', 'Audit trail for sensitive actions')
+      .addTag('Countries', 'Destination country management for Visa & Immigration')
+      .addTag(
+        'Visa Services',
+        'Visa & Immigration service offerings and requirements',
+      )
+      .addTag(
+        'Visa Inquiries',
+        'Public visa consultation inquiries linked to Lead CRM',
+      )
+      .addCookieAuth('access_token')
+      .addBearerAuth()
+      .build();
 
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/docs', app, document);
+  }
 }
 
 export async function createConfiguredApp(): Promise<INestApplication> {

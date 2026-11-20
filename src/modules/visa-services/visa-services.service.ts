@@ -34,9 +34,7 @@ export class VisaServicesService {
     const [
       totalCountries,
       countriesWithPublishedServices,
-      publishedServicesCount,
-      acceptingInquiriesCount,
-      pausedServicesCount,
+      serviceGroups,
       visaInquiriesCount,
       visaLeadsCount,
     ] = await Promise.all([
@@ -51,20 +49,12 @@ export class VisaServicesService {
           },
         },
       }),
-      this.prisma.visaService.count({
-        where: { publicationStatus: VisaPublicationStatus.PUBLISHED },
-      }),
-      this.prisma.visaService.count({
+      this.prisma.visaService.groupBy({
+        by: ['publicationStatus', 'serviceStatus'],
         where: {
-          publicationStatus: VisaPublicationStatus.PUBLISHED,
-          serviceStatus: AgencyServiceStatus.ACCEPTING_INQUIRIES,
-        },
-      }),
-      this.prisma.visaService.count({
-        where: {
-          serviceStatus: AgencyServiceStatus.TEMPORARILY_PAUSED,
           publicationStatus: { not: VisaPublicationStatus.ARCHIVED },
         },
+        _count: { _all: true },
       }),
       this.prisma.visaInquiry.count(),
       this.prisma.lead.count({
@@ -80,6 +70,23 @@ export class VisaServicesService {
         },
       }),
     ]);
+
+    let publishedServicesCount = 0;
+    let acceptingInquiriesCount = 0;
+    let pausedServicesCount = 0;
+
+    for (const row of serviceGroups) {
+      const count = row._count._all;
+      if (row.publicationStatus === VisaPublicationStatus.PUBLISHED) {
+        publishedServicesCount += count;
+        if (row.serviceStatus === AgencyServiceStatus.ACCEPTING_INQUIRIES) {
+          acceptingInquiriesCount += count;
+        }
+      }
+      if (row.serviceStatus === AgencyServiceStatus.TEMPORARILY_PAUSED) {
+        pausedServicesCount += count;
+      }
+    }
 
     return {
       totalCountries,
@@ -262,6 +269,25 @@ export class VisaServicesService {
             flagUrl: true,
             shortIntro: true,
             coverageStatus: true,
+            visaServices: {
+              where: {
+                slug: { not: normalizedServiceSlug },
+                publicationStatus: VisaPublicationStatus.PUBLISHED,
+              },
+              orderBy: { displayOrder: 'asc' },
+              select: {
+                id: true,
+                title: true,
+                slug: true,
+                category: true,
+                customCategoryLabel: true,
+                shortDescription: true,
+                serviceStatus: true,
+                estimatedProcessingTime: true,
+                agencyServiceFee: true,
+                currency: true,
+              },
+            },
           },
         },
         requirements: {
@@ -276,29 +302,11 @@ export class VisaServicesService {
       );
     }
 
-    const relatedServices = await this.prisma.visaService.findMany({
-      where: {
-        countryId: service.countryId,
-        id: { not: service.id },
-        publicationStatus: VisaPublicationStatus.PUBLISHED,
-      },
-      orderBy: { displayOrder: 'asc' },
-      select: {
-        id: true,
-        title: true,
-        slug: true,
-        category: true,
-        customCategoryLabel: true,
-        shortDescription: true,
-        serviceStatus: true,
-        estimatedProcessingTime: true,
-        agencyServiceFee: true,
-        currency: true,
-      },
-    });
+    const { visaServices: relatedServices, ...country } = service.country;
 
     return {
       ...service,
+      country,
       relatedServices,
     };
   }
@@ -495,7 +503,18 @@ export class VisaServicesService {
   }
 
   async softArchive(id: string, actorId: string) {
-    const current = await this.findAdminOne(id);
+    const current = await this.prisma.visaService.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        title: true,
+        country: { select: { name: true } },
+      },
+    });
+
+    if (!current) {
+      throw new NotFoundException(`Visa service with ID ${id} not found`);
+    }
 
     const updated = await this.prisma.visaService.update({
       where: { id },

@@ -11,6 +11,7 @@ export class FollowUpsService {
   async create(leadId: string, dto: CreateFollowUpDto, actorId: string) {
     const lead = await this.prisma.lead.findUnique({
       where: { id: leadId },
+      select: { id: true },
     });
 
     if (!lead) {
@@ -53,26 +54,31 @@ export class FollowUpsService {
   }
 
   async findByLead(leadId: string) {
-    const lead = await this.prisma.lead.findUnique({
-      where: { id: leadId },
-    });
+    const [lead, tasks] = await Promise.all([
+      this.prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { id: true },
+      }),
+      this.prisma.followUpTask.findMany({
+        where: { leadId },
+        orderBy: { dueAt: 'asc' },
+        include: {
+          assignedTo: { select: { id: true, name: true, email: true } },
+        },
+      }),
+    ]);
 
     if (!lead) {
       throw new NotFoundException(`Lead with ID ${leadId} not found`);
     }
 
-    return this.prisma.followUpTask.findMany({
-      where: { leadId },
-      orderBy: { dueAt: 'asc' },
-      include: {
-        assignedTo: { select: { id: true, name: true, email: true } },
-      },
-    });
+    return tasks;
   }
 
   async update(id: string, dto: UpdateFollowUpDto, actorId: string) {
     const existing = await this.prisma.followUpTask.findUnique({
       where: { id },
+      select: { id: true, status: true, dueAt: true },
     });
 
     if (!existing) {

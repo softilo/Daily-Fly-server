@@ -65,15 +65,19 @@ export class QuotationsService {
   }
 
   async create(leadId: string, dto: CreateQuotationDto, creatorId: string) {
-    const lead = await this.prisma.lead.findUnique({
-      where: { id: leadId },
-    });
+    const [lead, settings, count] = await Promise.all([
+      this.prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { id: true, stage: true },
+      }),
+      this.prisma.agencySettings.findFirst(),
+      this.prisma.quotation.count(),
+    ]);
 
     if (!lead) {
       throw new NotFoundException(`Lead with ID ${leadId} not found`);
     }
 
-    const settings = await this.prisma.agencySettings.findFirst();
     const defaultTaxRate = settings?.taxRate ? Number(settings.taxRate) : 0;
     const defaultTerms =
       dto.termsAndConditions ||
@@ -90,7 +94,6 @@ export class QuotationsService {
 
     // Generate unique human-readable Quote number: Q-YYYYMM-XXXX
     const datePrefix = new Date().toISOString().slice(0, 7).replace('-', '');
-    const count = await this.prisma.quotation.count();
     const quoteNumber = `Q-${datePrefix}-${String(count + 1).padStart(4, '0')}`;
 
     const quotation = await this.prisma.$transaction(async (tx) => {
@@ -149,23 +152,27 @@ export class QuotationsService {
   }
 
   async findByLead(leadId: string) {
-    const lead = await this.prisma.lead.findUnique({
-      where: { id: leadId },
-    });
+    const [lead, quotations] = await Promise.all([
+      this.prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { id: true },
+      }),
+      this.prisma.quotation.findMany({
+        where: { leadId },
+        orderBy: [{ quoteNumber: 'desc' }, { revision: 'desc' }],
+        include: {
+          items: { orderBy: { orderIndex: 'asc' } },
+          createdBy: { select: { id: true, name: true, email: true } },
+          approvedBy: { select: { id: true, name: true, email: true } },
+        },
+      }),
+    ]);
 
     if (!lead) {
       throw new NotFoundException(`Lead with ID ${leadId} not found`);
     }
 
-    return this.prisma.quotation.findMany({
-      where: { leadId },
-      orderBy: [{ quoteNumber: 'desc' }, { revision: 'desc' }],
-      include: {
-        items: { orderBy: { orderIndex: 'asc' } },
-        createdBy: { select: { id: true, name: true, email: true } },
-        approvedBy: { select: { id: true, name: true, email: true } },
-      },
-    });
+    return quotations;
   }
 
   async findOne(id: string) {

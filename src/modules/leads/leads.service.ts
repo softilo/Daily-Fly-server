@@ -308,8 +308,18 @@ export class LeadsService {
     return updated;
   }
 
+  private async ensureLeadExists(id: string) {
+    const lead = await this.prisma.lead.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!lead) {
+      throw new NotFoundException(`Lead with ID ${id} not found`);
+    }
+  }
+
   async addNote(leadId: string, createNoteDto: CreateLeadNoteDto, authorId: string) {
-    await this.findOne(leadId);
+    await this.ensureLeadExists(leadId);
 
     const note = await this.prisma.leadNote.create({
       data: {
@@ -328,16 +338,26 @@ export class LeadsService {
   }
 
   async getNotes(leadId: string) {
-    await this.findOne(leadId);
-
-    return this.prisma.leadNote.findMany({
-      where: { leadId },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        author: {
-          select: { id: true, name: true, email: true },
+    const [lead, notes] = await Promise.all([
+      this.prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { id: true },
+      }),
+      this.prisma.leadNote.findMany({
+        where: { leadId },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          author: {
+            select: { id: true, name: true, email: true },
+          },
         },
-      },
-    });
+      }),
+    ]);
+
+    if (!lead) {
+      throw new NotFoundException(`Lead with ID ${leadId} not found`);
+    }
+
+    return notes;
   }
 }

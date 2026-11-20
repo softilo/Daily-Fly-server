@@ -165,7 +165,14 @@ export class PackagesService {
   }
 
   async softArchive(id: string, actorId: string) {
-    await this.findOne(id);
+    const existing = await this.prisma.package.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Tour package with ID ${id} not found`);
+    }
 
     const updated = await this.prisma.package.update({
       where: { id },

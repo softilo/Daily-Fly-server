@@ -25,6 +25,7 @@ describe('VisaServicesService', () => {
         create: vi.fn(),
         update: vi.fn(),
         count: vi.fn(),
+        groupBy: vi.fn(),
       },
       visaServiceRequirement: {
         deleteMany: vi.fn(),
@@ -165,6 +166,73 @@ describe('VisaServicesService', () => {
     const res = await service.softArchive('vs-1', 'admin-1');
     expect(res.publicationStatus).toBe(VisaPublicationStatus.ARCHIVED);
     expect(res.serviceStatus).toBe(AgencyServiceStatus.NOT_OFFERED);
+  });
+
+  it('returns country details and relatedServices from single detail query', async () => {
+    prismaMock.visaService.findFirst.mockResolvedValue({
+      id: 'vs-1',
+      slug: 'student-visa-assistance',
+      title: 'Student Visa Assistance',
+      country: {
+        id: 'country-a',
+        name: 'Example Destination A',
+        slug: 'example-destination-a',
+        visaServices: [
+          {
+            id: 'vs-2',
+            slug: 'work-permit-assistance',
+            title: 'Work Permit Assistance',
+          },
+        ],
+      },
+      requirements: [],
+    });
+
+    const detail = await service.findPublicByCountryAndServiceSlug(
+      'example-destination-a',
+      'student-visa-assistance',
+    );
+
+    expect(prismaMock.visaService.findMany).not.toHaveBeenCalled();
+    expect(detail.relatedServices).toHaveLength(1);
+    expect((detail.country as any).visaServices).toBeUndefined();
+  });
+
+  it('aggregates admin overview counts using groupBy', async () => {
+    prismaMock.country.count
+      .mockResolvedValueOnce(4)
+      .mockResolvedValueOnce(3);
+    prismaMock.visaService.groupBy.mockResolvedValue([
+      {
+        publicationStatus: VisaPublicationStatus.PUBLISHED,
+        serviceStatus: AgencyServiceStatus.ACCEPTING_INQUIRIES,
+        _count: { _all: 5 },
+      },
+      {
+        publicationStatus: VisaPublicationStatus.PUBLISHED,
+        serviceStatus: AgencyServiceStatus.TEMPORARILY_PAUSED,
+        _count: { _all: 2 },
+      },
+      {
+        publicationStatus: VisaPublicationStatus.DRAFT,
+        serviceStatus: AgencyServiceStatus.TEMPORARILY_PAUSED,
+        _count: { _all: 1 },
+      },
+    ]);
+    prismaMock.visaInquiry.count.mockResolvedValue(9);
+    prismaMock.lead.count.mockResolvedValue(7);
+
+    const overview = await service.getAdminOverview();
+
+    expect(overview).toEqual({
+      totalCountries: 4,
+      countriesWithPublishedServices: 3,
+      publishedServicesCount: 7,
+      acceptingInquiriesCount: 5,
+      pausedServicesCount: 3,
+      visaInquiriesCount: 9,
+      visaLeadsCount: 7,
+    });
   });
 });
 

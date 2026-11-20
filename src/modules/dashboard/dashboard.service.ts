@@ -10,30 +10,25 @@ export class DashboardService {
     const now = new Date();
 
     const [
-      newLeads,
-      qualifiedLeads,
-      quotedLeads,
-      followUpLeads,
-      wonLeads,
-      lostLeads,
-      totalLeads,
-      draftQuotes,
-      approvedQuotes,
+      leadStageGroups,
+      quotationStatusGroups,
       activePackages,
       openFollowUps,
       overdueFollowUps,
       wonRevenueRaw,
       upcomingTasks,
     ] = await Promise.all([
-      this.prisma.lead.count({ where: { stage: LeadStage.NEW } }),
-      this.prisma.lead.count({ where: { stage: LeadStage.QUALIFIED } }),
-      this.prisma.lead.count({ where: { stage: LeadStage.QUOTED } }),
-      this.prisma.lead.count({ where: { stage: LeadStage.FOLLOW_UP } }),
-      this.prisma.lead.count({ where: { stage: LeadStage.WON } }),
-      this.prisma.lead.count({ where: { stage: LeadStage.LOST } }),
-      this.prisma.lead.count(),
-      this.prisma.quotation.count({ where: { status: QuotationStatus.DRAFT } }),
-      this.prisma.quotation.count({ where: { status: QuotationStatus.APPROVED } }),
+      this.prisma.lead.groupBy({
+        by: ['stage'],
+        _count: { _all: true },
+      }),
+      this.prisma.quotation.groupBy({
+        by: ['status'],
+        where: {
+          status: { in: [QuotationStatus.DRAFT, QuotationStatus.APPROVED] },
+        },
+        _count: { _all: true },
+      }),
       this.prisma.package.count({ where: { isArchived: false } }),
       this.prisma.followUpTask.count({ where: { status: FollowUpStatus.OPEN } }),
       this.prisma.followUpTask.count({
@@ -75,17 +70,35 @@ export class DashboardService {
       }),
     ]);
 
+    const leadsByStage: Record<LeadStage, number> = {
+      [LeadStage.NEW]: 0,
+      [LeadStage.QUALIFIED]: 0,
+      [LeadStage.QUOTED]: 0,
+      [LeadStage.FOLLOW_UP]: 0,
+      [LeadStage.WON]: 0,
+      [LeadStage.LOST]: 0,
+    };
+    let totalLeads = 0;
+    for (const row of leadStageGroups) {
+      const count = row._count._all;
+      leadsByStage[row.stage] = count;
+      totalLeads += count;
+    }
+
+    let draftQuotes = 0;
+    let approvedQuotes = 0;
+    for (const row of quotationStatusGroups) {
+      if (row.status === QuotationStatus.DRAFT) {
+        draftQuotes = row._count._all;
+      } else if (row.status === QuotationStatus.APPROVED) {
+        approvedQuotes = row._count._all;
+      }
+    }
+
     return {
       leads: {
         total: totalLeads,
-        byStage: {
-          NEW: newLeads,
-          QUALIFIED: qualifiedLeads,
-          QUOTED: quotedLeads,
-          FOLLOW_UP: followUpLeads,
-          WON: wonLeads,
-          LOST: lostLeads,
-        },
+        byStage: leadsByStage,
       },
       quotations: {
         total: draftQuotes + approvedQuotes,

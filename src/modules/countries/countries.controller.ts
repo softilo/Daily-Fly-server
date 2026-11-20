@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
@@ -42,6 +43,7 @@ export class CountriesController {
 
   @Public()
   @Get('countries')
+  @Header('Cache-Control', 'public, max-age=0, s-maxage=60, stale-while-revalidate=300')
   @ApiOperation({
     summary: 'List active destination countries with published visa services',
   })
@@ -52,6 +54,7 @@ export class CountriesController {
 
   @Public()
   @Get('countries/:slug')
+  @Header('Cache-Control', 'public, max-age=0, s-maxage=60, stale-while-revalidate=300')
   @ApiOperation({
     summary: 'Get public country details and published visa services by slug',
   })
